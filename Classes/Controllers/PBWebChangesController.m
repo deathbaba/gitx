@@ -41,7 +41,7 @@
 
 - (void) didLoad
 {
-	[[self script] setValue:controller.index forKey:@"Index"];
+	[[self script] setValue:controller.index  forKey:@"Index"];
 	[self refresh];
 }
 

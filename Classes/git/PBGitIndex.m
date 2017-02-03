@@ -44,6 +44,7 @@ NS_ENUM(NSUInteger, PBGitIndexOperation) {
 @interface PBGitIndex () {
 	dispatch_queue_t _indexRefreshQueue;
 	dispatch_group_t _indexRefreshGroup;
+	BOOL amend;
 }
 
 // Returns the tree to compare the index to, based
@@ -57,13 +58,9 @@ NS_ENUM(NSUInteger, PBGitIndexOperation) {
 
 @property (retain) NSDictionary *amendEnvironment;
 @property (retain) NSMutableArray *files;
-@property (assign) BOOL amend;
-
 @end
 
 @implementation PBGitIndex
-
-@synthesize amend=_amend;
 
 - (id)initWithRepository:(PBGitRepository *)theRepository
 {
@@ -88,10 +85,10 @@ NS_ENUM(NSUInteger, PBGitIndexOperation) {
 
 - (void)setAmend:(BOOL)newAmend
 {
-	if (newAmend == _amend)
+	if (newAmend == amend)
 		return;
 	
-	_amend = newAmend;
+	amend = newAmend;
 	self.amendEnvironment = nil;
 
 	[self refresh];
@@ -118,12 +115,11 @@ NS_ENUM(NSUInteger, PBGitIndexOperation) {
 	[[NSNotificationCenter defaultCenter] postNotificationName:PBGitIndexAmendMessageAvailable
 														object:self
 													  userInfo:notifDict];
-	
 }
 
 - (BOOL)isAmend
 {
-	return _amend;
+	return amend;
 }
 
 - (void)refresh
@@ -446,17 +442,17 @@ NS_ENUM(NSUInteger, PBGitIndexOperation) {
 	return YES;
 }
 
-- (BOOL)stageFiles:(NSArray *)stageFiles
+- (BOOL)stageFiles:(NSArray<PBChangedFile *> *)stageFiles
 {
 	return [self performStageOrUnstage:YES withFiles:stageFiles];
 }
 
-- (BOOL)unstageFiles:(NSArray *)unstageFiles
+- (BOOL)unstageFiles:(NSArray<PBChangedFile *> *)unstageFiles
 {
 	return [self performStageOrUnstage:NO withFiles:unstageFiles];
 }
 
-- (void)discardChangesForFiles:(NSArray *)discardFiles
+- (void)discardChangesForFiles:(NSArray<PBChangedFile *> *)discardFiles
 {
 	NSArray *paths = [discardFiles valueForKey:@"path"];
 	NSString *input = [paths componentsJoinedByString:@"\0"];

@@ -15,11 +15,11 @@
 
 - (NSMenu *)menuForEvent:(NSEvent *)theEvent
 {
-	if ([self delegate]) {
+	if(self.indexController) {
 		NSPoint eventLocation = [self convertPoint: [theEvent locationInWindow] fromView: nil];
 		NSInteger rowIndex = [self rowAtPoint:eventLocation];
 		[self selectRowIndexes:[NSIndexSet indexSetWithIndex:rowIndex] byExtendingSelection:TRUE];
-		return [(PBGitIndexController*)[self delegate] menuForTable: self];
+		return [self.indexController menuForTable:self];
 	}
 
 	return nil;
@@ -30,47 +30,137 @@
 	return NSDragOperationEvery;
 }
 
-#pragma mark NSView overrides
+#pragma mark Event Handling
 
-- (void)keyDown:(NSEvent *)theEvent
+- (PBGitIndexController *) indexController
 {
-    PBGitIndexController* controller = (PBGitIndexController*)[self delegate];
-
-    bool isUnstagedView = [self tag] == 0;
-    bool isStagedView = !isUnstagedView;
-    
-    bool commandDown = theEvent.modifierFlags & NSCommandKeyMask;
-    
-    if([theEvent.characters isEqualTo:@"s"] && commandDown && isUnstagedView) {
-        NSInteger oldSelectedRowIndex = self.selectedRow;
-        [controller stageSelectedFiles];
-
-        // Try to select the file after the one that was just staged, which will have the same index now
-        NSInteger rowIndexToSelect = oldSelectedRowIndex;
-        if(rowIndexToSelect > self.numberOfRows - 1) {
-            rowIndexToSelect = self.numberOfRows - 1;
-        }
-        
-
-        [self selectRowIndexes:[NSIndexSet indexSetWithIndex:rowIndexToSelect] byExtendingSelection:NO];
-    }
-    else if([theEvent.characters isEqualTo:@"u"] && commandDown && isStagedView) {
-        NSInteger oldSelectedRowIndex = self.selectedRow;
-        [controller unstageSelectedFiles];
-
-        // Try to select the file after the one that was just staged, which will have the same index now
-        NSInteger rowIndexToSelect = oldSelectedRowIndex;
-        if(rowIndexToSelect > self.numberOfRows - 1) {
-            rowIndexToSelect = self.numberOfRows - 1;
-        }
-
-        [self selectRowIndexes:[NSIndexSet indexSetWithIndex:rowIndexToSelect] byExtendingSelection:NO];
-
-    }
-    else {
-        [super keyDown:theEvent];     
-    }
+	return (PBGitIndexController *) self.delegate;
 }
+
+- (BOOL) validateMenuItem:(NSMenuItem *)menuItem
+{
+	//TODO: add & handle menu item for move to trash
+	//TODO: use dynamic menu item names like in contextual menu
+	if (menuItem.action == @selector(stageFilesAction:)) {
+		menuItem.title = [self.class menuItemTitleForSelection:self.filesForStaging
+									titleForMenuItemWithSingle:NSLocalizedString(@"Stage “%@”", @"Stage file menu item (single file with name)")
+													  multiple:NSLocalizedString(@"Stage %i Files", @"Stage file menu item (multiple files with number)")
+													   default:NSLocalizedString(@"Stage", @"Stage file menu item (empty selection)")];
+		return self.hasFilesForStaging;
+	}
+	else if (menuItem.action == @selector(discardFilesAction:)) {
+		menuItem.title = [self.class menuItemTitleForSelection:self.filesForStaging
+									titleForMenuItemWithSingle:NSLocalizedString(@"Discard changes to “%@”…", @"Discard changes menu item (single file with name)")
+													  multiple:NSLocalizedString(@"Discard changes to  %i Files…", @"Discard changes menu item (multiple files with number)")
+													   default:NSLocalizedString(@"Discard…", @"Discard changes menu item (empty selection)")];
+		menuItem.hidden = self.shouldTrashInsteadOfDiscard;
+		return self.hasFilesForStaging && self.canDiscardAnyFile;
+	}
+	else if (menuItem.action == @selector(forceDiscardFilesAction:)) {
+		menuItem.title = [self.class menuItemTitleForSelection:self.filesForStaging
+									titleForMenuItemWithSingle:NSLocalizedString(@"Discard changes to “%@”", @"Force Discard changes menu item (single file with name)")
+													  multiple:NSLocalizedString(@"Discard changes to  %i Files", @"Force Discard changes menu item (multiple files with number)")
+													   default:NSLocalizedString(@"Discard", @"Force Discard changes menu item (empty selection)")];
+		menuItem.hidden = self.shouldTrashInsteadOfDiscard;
+		return self.hasFilesForStaging && self.canDiscardAnyFile;
+	}
+	else if (menuItem.action == @selector(trashFilesAction:)) {
+		menuItem.title = [self.class menuItemTitleForSelection:self.filesForStaging
+									titleForMenuItemWithSingle:NSLocalizedString(@"Move “%@” to Trash", @"Move to Trash menu item (single file with name)")
+													  multiple:NSLocalizedString(@"Move %i Files to Trash", @"Move to Trash menu item (multiple files with number)")
+													   default:NSLocalizedString(@"Move to Trash", @"Move to Trash menu item (empty selection)")];
+		menuItem.hidden = !self.shouldTrashInsteadOfDiscard;
+		return self.hasFilesForStaging && self.canDiscardAnyFile;
+	}
+	else if (menuItem.action == @selector(unstageFilesAction:)) {
+		NSArray<PBChangedFile *> * filesForUnstaging = self.indexController.stagedFilesController.selectedObjects;
+		menuItem.title = [self.class menuItemTitleForSelection:filesForUnstaging
+									titleForMenuItemWithSingle:NSLocalizedString(@"Unstage “%@”", @"Unstage file menu item (single file with name)")
+													  multiple:NSLocalizedString(@"Unstage %i Files", @"Unstage file menu item (multiple files with number)")
+													   default:NSLocalizedString(@"Unstage", @"Unstage file menu item (empty selection)")];
+		return filesForUnstaging.count > 0;
+	}
+	
+	return [super validateMenuItem:menuItem];
+}
+
++ (NSString *) menuItemTitleForSelection:(NSArray<PBChangedFile *> *)files
+			  titleForMenuItemWithSingle:(NSString *)singleFormat
+								multiple:(NSString *)multipleFormat
+								 default:(NSString *)defaultString {
+	
+	NSUInteger numberOfFiles = files.count;
+	
+	if (numberOfFiles == 0) {
+		return defaultString;
+	}
+	else if (numberOfFiles == 1) {
+		return [NSString stringWithFormat:singleFormat, [PBGitIndexController getNameOfFirstFile:files]];
+	}
+	return [NSString stringWithFormat:multipleFormat, numberOfFiles];
+}
+
+- (BOOL) hasFilesForStaging {
+	return self.numberOfSelectedFilesForStaging > 0;
+}
+
+- (NSUInteger) numberOfSelectedFilesForStaging{
+	return self.filesForStaging.count;
+}
+
+- (NSArray<PBChangedFile *> *) filesForStaging {
+	return self.indexController.unstagedFilesController.selectedObjects;
+}
+
+- (BOOL) canDiscardAnyFile {
+	return [PBGitIndexController canDiscardAnyFileIn:self.filesForStaging];
+}
+
+- (BOOL) shouldTrashInsteadOfDiscard {
+	return [PBGitIndexController shouldTrashInsteadOfDiscardAnyFileIn:self.filesForStaging];
+}
+
+
+
+#pragma mark IBActions
+
+- (IBAction) stageFilesAction:(id)sender
+{
+	[self.indexController stageSelectedFiles];
+}
+
+- (IBAction) unstageFilesAction:(id)sender
+{
+	[self.indexController unstageSelectedFiles];
+}
+
+- (IBAction) discardFilesAction:(id) sender
+{
+	[self discardFiles:sender force:NO];
+}
+
+- (IBAction) forceDiscardFilesAction:(id)sender
+{
+	[self discardFiles:sender force:YES];
+}
+
+- (void) discardFiles:(id)sender force:(BOOL)force
+{
+	NSArray<PBChangedFile *> *selectedFiles = [sender representedObject];
+	if (selectedFiles.count > 0) {
+		[self.indexController discardChangesForFiles:selectedFiles force:force];
+	}
+}
+
+- (IBAction) trashFilesAction:(id)sender
+{
+	NSArray<PBChangedFile *> *selectedFiles = [sender representedObject];
+	[self.indexController moveToTrash:selectedFiles];
+}
+
+
+
+#pragma mark NSView overrides
 
 -(BOOL)acceptsFirstResponder
 {

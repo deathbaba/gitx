@@ -38,7 +38,6 @@
 
 @implementation PBGitCommitController
 
-@synthesize index;
 @synthesize stashKeepIndex;
 
 - (id)initWithRepository:(PBGitRepository *)theRepository superController:(PBGitWindowController *)controller
@@ -46,8 +45,7 @@
 	if (!(self = [super initWithRepository:theRepository superController:controller]))
 		return nil;
 
-	index = [[PBGitIndex alloc] initWithRepository:theRepository];
-	[index refresh];
+	PBGitIndex *index = theRepository.index;
 
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshFinished:) name:PBGitIndexFinishedIndexRefresh object:index];
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(commitStatusUpdated:) name:PBGitIndexCommitStatus object:index];
@@ -130,13 +128,13 @@
 	}
 }
 
-- (void) refresh:(id) sender
+- (IBAction) refresh:(id) sender
 {
 	[controlsTabView selectTabViewItemAtIndex:kControlsTabIndexCommit];
 
 	self.isBusy = YES;
 	self.status = @"Refreshing index…";
-	[index refresh];
+	[repository.index refresh];
 
 	// Reload refs (in case HEAD changed)
 	[repository reloadRefs];
@@ -177,7 +175,7 @@
 	
 	NSString *commitMessage = [commitMessageView string];
 	if ([commitMessage length] < 3) {
-		[[repository windowController] showMessageSheet:@"Commitmessage missing" infoText:@"Please enter a commit message before committing"];
+		[[repository windowController] showMessageSheet:@"Commit message missing" infoText:@"Please enter a commit message before committing"];
 		return;
 	}
 
@@ -187,7 +185,12 @@
 	self.isBusy = YES;
 	[commitMessageView setEditable:NO];
 
-	[index commitWithMessage:commitMessage andVerify:doVerify];
+	[repository.index commitWithMessage:commitMessage andVerify:doVerify];
+}
+
+
+- (PBGitIndex *) index {
+	return repository.index;
 }
 
 
